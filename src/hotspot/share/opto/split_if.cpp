@@ -409,11 +409,11 @@ bool PhaseIdealLoop::clone_cmp_down(Node* n, const Node* blk1, const Node* blk2)
   return false;
 }
 
-// This class clones Template Assertion Predicates bools down as part of the Split If optimization.
+// This class clones Template Assertion Predicates Bools down as part of the Split If optimization.
 class CloneTemplateAssertionPredicateBoolDown {
   PhaseIdealLoop* _phase;
 
-  // Check if 'n' belongs to the init or last value Template Assertion Predicate bool, including the OpaqueLoop* nodes.
+  // Check if 'n' belongs to the init or last value Template Assertion Predicate Bool, including the OpaqueLoop* nodes.
   static bool could_be_part_of_template_assertion_predicate_bool(Node* n) {
     if (TemplateAssertionPredicateBool::could_be_part(n)) {
       ResourceMark rm;
@@ -457,7 +457,7 @@ class CloneTemplateAssertionPredicateBoolDown {
       if (is_template_assertion_predicate(next)) {
         clone_template_assertion_predicate_bool_and_replace(next);
       } else {
-        assert(!next->is_CFG(), "no CFG expected in Template Assertion Predicate bool outputs");
+        assert(!next->is_CFG(), "no CFG expected in Template Assertion Predicate Bool");
         push_outputs(list, next);
       }
     }
@@ -485,10 +485,11 @@ class CloneTemplateAssertionPredicateBoolDown {
  public:
   CloneTemplateAssertionPredicateBoolDown(PhaseIdealLoop* phase) : _phase(phase) {}
 
-  // 'n' could be a node on the input chain from an OpaqueLoop* node (or an OpaqueLoop* node itself) to a Template Assertion
-  // Predicate bool. In this case, we need to clone the bool and the entire input chain including the OpaqueLoop* nodes
-  // down. This avoids creating the phi node inside the input chain. Otherwise, we could not find the OpaqueLoop* nodes
-  // anymore when trying to access them for a Template Assertion Predicate (pattern matching does not expect phis).
+  // 'n' could be a node belonging to a Template Assertion Predicate Bool (i.e. any node between a Template Assertion
+  // Predicate and its OpaqueLoop* nodes (included)). In this case, we need to clone all the nodes belonging to the
+  // Template Assertion Predicate Bool down. This avoids creating the phi node on the BoolNode input chain from the
+  // OpaqueLoop* nodes. Otherwise, we could not find the OpaqueLoop* nodes anymore when trying to access them in
+  // with Template Assertion Predicate Bool related code (pattern matching does not expect phis).
   void clone_if_part_of_template_assertion_predicate_bool(Node* n) {
     if (!could_be_part_of_template_assertion_predicate_bool(n)) {
       return;

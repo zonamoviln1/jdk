@@ -265,7 +265,7 @@ class RuntimePredicate : public StackObj {
   static bool is_success_proj(Node* node, Deoptimization::DeoptReason deopt_reason);
 };
 
-// A Template Assertion Predicate bool represents the BoolNode for the initial value or the last value of a
+// A Template Assertion Predicate Bool represents the BoolNode for the initial value or the last value of a
 // Template Assertion Predicate and all the nodes up to and including the OpaqueLoop* nodes.
 class TemplateAssertionPredicateBool : public StackObj {
   BoolNode* _source_bool;
@@ -273,7 +273,7 @@ class TemplateAssertionPredicateBool : public StackObj {
  public:
   explicit TemplateAssertionPredicateBool(Node* source_bool);
 
-  // Is 'n' a node that could be part of a Template Assertion Predicate bool (i.e. could be found on the input chain of
+  // Is 'n' a node that could be part of a Template Assertion Predicate Bool (i.e. could be found on the input chain of
   // a Template Assertion Predicate BoolNode up to and including the OpaqueLoop* nodes)?
   static bool could_be_part(const Node* n) {
     const int opcode = n->Opcode();

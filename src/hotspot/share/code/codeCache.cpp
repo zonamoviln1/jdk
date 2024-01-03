@@ -218,13 +218,11 @@ void CodeCache::initialize_heaps() {
   CodeCacheSegment profiled = {ProfiledCodeHeapSize, FLAG_IS_CMDLINE(ProfiledCodeHeapSize), true};
   CodeCacheSegment non_profiled = {NonProfiledCodeHeapSize, FLAG_IS_CMDLINE(NonProfiledCodeHeapSize), true};
 
-  bool cache_size_set       = FLAG_IS_CMDLINE(ReservedCodeCacheSize);
-  const size_t ps           = page_size(false, 8);
-  const size_t min_size     = MAX2(os::vm_allocation_granularity(), ps);
-  size_t cache_size         = ReservedCodeCacheSize;
-  size_t min_cache_size     = CodeCacheMinimumUseSpace DEBUG_ONLY(* 3); // Make sure we have enough space for VM internal code
-
-  size_t compiler_buffer_size = 0;
+  const bool cache_size_set   = FLAG_IS_CMDLINE(ReservedCodeCacheSize);
+  const size_t ps             = page_size(false, 8);
+  const size_t min_size       = MAX2(os::vm_allocation_granularity(), ps);
+  const size_t min_cache_size = CodeCacheMinimumUseSpace DEBUG_ONLY(* 3); // Make sure we have enough space for VM internal code
+  size_t cache_size           = ReservedCodeCacheSize;
 
   // Prerequisites
   if (!heap_available(CodeBlobType::MethodProfiled)) {
@@ -246,52 +244,40 @@ void CodeCache::initialize_heaps() {
     non_profiled.enabled = false;
   }
 
-// Code below account enabled/disabled compilators
-// inside CompilationPolicy::initialize()
-#ifdef COMPILER1
-  // C1 temporary code buffers (see Compiler::init_buffer_blob())
-  const int c1_count = CompilationPolicy::c1_count();
-  compiler_buffer_size += c1_count * Compiler::code_buffer_size();
-#endif
-#ifdef COMPILER2
-  // C2 scratch buffers (see Compile::init_scratch_buffer_blob())
-  const int c2_count = CompilationPolicy::c2_count();
-  // Initial size of constant table (this may be increased if a compiled method needs more space)
-  compiler_buffer_size += c2_count * C2Compiler::initial_code_buffer_size();
-#endif
+  size_t compiler_buffer_size = 0;
+  COMPILER1_PRESENT(compiler_buffer_size += CompilationPolicy::c1_count() * Compiler::code_buffer_size());
+  COMPILER2_PRESENT(compiler_buffer_size += CompilationPolicy::c2_count() * C2Compiler::initial_code_buffer_size());
 
   if (!non_nmethod.set) {
     non_nmethod.size += compiler_buffer_size;
   }
 
   if (!profiled.set && !non_profiled.set) {
-    profiled.size = (non_nmethod.size < cache_size && (cache_size - non_nmethod.size)/2 > min_size) ? (cache_size - non_nmethod.size)/2 : min_size;
-    non_profiled.size = profiled.size;
+    non_profiled.size = profiled.size = (cache_size > non_nmethod.size + 2 * min_size) ?
+                                        (cache_size - non_nmethod.size) / 2 : min_size;
   }
 
   if (profiled.set && !non_profiled.set) {
-    non_profiled.size = safe_size(non_nmethod.size + profiled.size, cache_size, min_size);
+    non_profiled.size = subtract_size(cache_size, non_nmethod.size + profiled.size, min_size);
   }
 
   if (!profiled.set && non_profiled.set) {
-    profiled.size = safe_size(non_nmethod.size + non_profiled.size, cache_size, min_size);
+    profiled.size = subtract_size(cache_size, non_nmethod.size + non_profiled.size, min_size);
   }
 
   // Compatibility.
   // Override Non-NMethod default size if two other segments are set explicitly
-  size_t nm_min_size = min_cache_size + compiler_buffer_size;
+  size_t non_nmethod_min_size = min_cache_size + compiler_buffer_size;
   if (!non_nmethod.set && profiled.set && non_profiled.set) {
-    non_nmethod.size = safe_size(profiled.size + non_profiled.size, cache_size, nm_min_size);
+    non_nmethod.size = subtract_size(cache_size, profiled.size + non_profiled.size, non_nmethod_min_size);
   }
 
   size_t total = non_nmethod.size + profiled.size + non_profiled.size;
-  if (!cache_size_set && (total > cache_size || total != cache_size)) {
+  if (total != cache_size && !cache_size_set) {
     log_info(codecache)("ReservedCodeCache size %lld changed to total segments size NonNMethod %lld NonProfiled %lld Profiled %lld = %lld",
-                        (long long) cache_size, (long long) non_nmethod.size,
-                        (long long) non_profiled.size, (long long) profiled.size,
-                        (long long) total);
-
-    // Adjust RCCS as necessary because it was not set explicitly
+                        (long long) cache_size, (long long) non_nmethod.size, (long long) non_profiled.size,
+                        (long long) profiled.size, (long long) total);
+    // Adjust ReservedCodeCacheSize as necessary because it was not set explicitly
     cache_size = total;
   }
 
@@ -301,8 +287,8 @@ void CodeCache::initialize_heaps() {
 
   // Validation
   // Check minimal required sizes
-  if (non_nmethod.size < nm_min_size) {
-    report_cache_minimal_size_error("non-nmethod code heap", non_nmethod.size, nm_min_size);
+  if (non_nmethod.size < non_nmethod_min_size) {
+    report_cache_minimal_size_error("non-nmethod code heap", non_nmethod.size, non_nmethod_min_size);
     return;
   }
 
@@ -322,7 +308,7 @@ void CodeCache::initialize_heaps() {
   }
 
   // ReservedCodeCacheSize was set explicitly, so report error and abort if it doesn't match segment sizes.
-  if (cache_size_set && (total > cache_size || total != cache_size)) {
+  if (total != cache_size && cache_size_set) {
     report_cache_size_error(non_nmethod, profiled, non_profiled, cache_size);
     return;
   }
@@ -336,6 +322,10 @@ void CodeCache::initialize_heaps() {
                              PROPERFMTARGS(lg_ps), PROPERFMTARGS(ps));
     }
   }
+
+  // last adjustment: leftovers from page alignment go to non_nmethod segment
+  non_nmethod.size += non_profiled.size & alignment_mask(min_size);
+  non_nmethod.size += profiled.size & alignment_mask(min_size);
 
   // Note: if large page support is enabled, min_size is at least the large
   // page size. This ensures that the code cache is covered by large pages.
@@ -371,7 +361,6 @@ void CodeCache::initialize_heaps() {
     // Tier 1 and tier 4 (non-profiled) methods and native methods
     add_heap(non_profiled_space, "CodeHeap 'non-profiled nmethods'", CodeBlobType::MethodNonProfiled);
   }
-
 }
 
 size_t CodeCache::page_size(bool aligned, size_t min_pages) {

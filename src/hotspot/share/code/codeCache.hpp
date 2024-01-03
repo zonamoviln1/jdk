@@ -114,8 +114,8 @@ class CodeCache : AllStatic {
   static void initialize_heaps();                             // Initializes the CodeHeaps
   static void report_cache_size_error(const CodeCacheSegment& non_nmethod, const CodeCacheSegment& profiled, const CodeCacheSegment& non_profiled, size_t cache_size);
   static void report_cache_minimal_size_error(const char *codeheap, size_t size, size_t required_size);
-  static size_t safe_size(size_t total, size_t cache_size, size_t min_size) {
-    return (total < cache_size && (cache_size - total) > min_size) ? (cache_size - total) : min_size;
+  static size_t subtract_size(size_t cache_size, size_t known_segments_size, size_t min_size) {
+    return (cache_size > known_segments_size + min_size) ? (cache_size - known_segments_size) : min_size;
   }
 
   // Creates a new heap with the given name and size, containing CodeBlobs of the given type

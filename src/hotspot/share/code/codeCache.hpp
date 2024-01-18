@@ -79,7 +79,6 @@ class OopClosure;
 class ShenandoahParallelCodeHeapIterator;
 class NativePostCallNop;
 class DeoptimizationScope;
-struct CodeCacheSegment;
 
 class CodeCache : AllStatic {
   friend class VMStructs;
@@ -112,11 +111,6 @@ class CodeCache : AllStatic {
 
   // CodeHeap management
   static void initialize_heaps();                             // Initializes the CodeHeaps
-  static void report_cache_size_error(const CodeCacheSegment& non_nmethod, const CodeCacheSegment& profiled, const CodeCacheSegment& non_profiled, size_t cache_size);
-  static void report_cache_minimal_size_error(const char *codeheap, size_t size, size_t required_size);
-  static size_t subtract_size(size_t cache_size, size_t known_segments_size, size_t min_size) {
-    return (cache_size > known_segments_size + min_size) ? (cache_size - known_segments_size) : min_size;
-  }
 
   // Creates a new heap with the given name and size, containing CodeBlobs of the given type
   static void add_heap(ReservedSpace rs, const char* name, CodeBlobType code_blob_type);
@@ -465,12 +459,5 @@ typedef CodeBlobIterator<CompiledMethod, CompiledMethodFilter, false /* is_relax
 typedef CodeBlobIterator<CompiledMethod, CompiledMethodFilter, true /* is_relaxed */> RelaxedCompiledMethodIterator;
 typedef CodeBlobIterator<nmethod, NMethodFilter, false /* is_relaxed */> NMethodIterator;
 typedef CodeBlobIterator<CodeBlob, AllCodeBlobsFilter, false /* is_relaxed */> AllCodeBlobsIterator;
-
-struct CodeCacheSegment {
-  size_t size;
-  bool set;
-  bool enabled;
-};
-
 
 #endif // SHARE_CODE_CODECACHE_HPP

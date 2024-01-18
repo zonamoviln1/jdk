@@ -178,16 +178,27 @@ GrowableArray<CodeHeap*>* CodeCache::_compiled_heaps = new(mtCode) GrowableArray
 GrowableArray<CodeHeap*>* CodeCache::_nmethod_heaps = new(mtCode) GrowableArray<CodeHeap*> (static_cast<int>(CodeBlobType::All), mtCode);
 GrowableArray<CodeHeap*>* CodeCache::_allocable_heaps = new(mtCode) GrowableArray<CodeHeap*> (static_cast<int>(CodeBlobType::All), mtCode);
 
-void CodeCache::report_cache_minimal_size_error(const char *codeheap, size_t size, size_t required_size) {
-  log_debug(codecache)("CodeCache minimum size fail for %s %lld vs %lld",
-                       codeheap, (long long) size, (long long) required_size);
-  err_msg title("Not enough space in %s to run VM", codeheap);
-  err_msg message(SIZE_FORMAT "K < " SIZE_FORMAT "K", size, required_size);
-  vm_exit_during_initialization(title, message);
+static bool check_min_size(const char *codeheap, size_t size, size_t required_size) {
+  if (size >= required_size) {
+    return true;
+  } else {
+    log_debug(codecache)("CodeCache minimum size fail for %s %lld vs %lld",
+                         codeheap, (long long) size, (long long) required_size);
+    err_msg title("Not enough space in %s to run VM", codeheap);
+    err_msg message(SIZE_FORMAT "K < " SIZE_FORMAT "K", size/K, required_size/K);
+    vm_exit_during_initialization(title, message);
+    return false;
+  }
 }
 
-void CodeCache::report_cache_size_error(const CodeCacheSegment& non_nmethod, const CodeCacheSegment& profiled,
-                                          const CodeCacheSegment& non_profiled, size_t cache_size) {
+struct CodeHeapInfo {
+  size_t size;
+  bool set;
+  bool enabled;
+};
+
+static void report_cache_size_error(const CodeHeapInfo& non_nmethod, const CodeHeapInfo& profiled,
+                                    const CodeHeapInfo& non_profiled, size_t cache_size) {
   size_t total = non_nmethod.size;
 
   err_msg message("NonNMethodCodeHeapSize (" SIZE_FORMAT "K)", non_nmethod.size/K);
@@ -212,11 +223,15 @@ void CodeCache::report_cache_size_error(const CodeCacheSegment& non_nmethod, con
   vm_exit_during_initialization("Invalid code heap sizes", message);
 }
 
+static size_t subtract_size(size_t cache_size, size_t known_segments_size, size_t min_size) {
+  return (cache_size > known_segments_size + min_size) ? (cache_size - known_segments_size) : min_size;
+}
+
 void CodeCache::initialize_heaps() {
 
-  CodeCacheSegment non_nmethod = {NonNMethodCodeHeapSize, FLAG_IS_CMDLINE(NonNMethodCodeHeapSize), true};
-  CodeCacheSegment profiled = {ProfiledCodeHeapSize, FLAG_IS_CMDLINE(ProfiledCodeHeapSize), true};
-  CodeCacheSegment non_profiled = {NonProfiledCodeHeapSize, FLAG_IS_CMDLINE(NonProfiledCodeHeapSize), true};
+  CodeHeapInfo non_nmethod = {NonNMethodCodeHeapSize, FLAG_IS_CMDLINE(NonNMethodCodeHeapSize), true};
+  CodeHeapInfo profiled = {ProfiledCodeHeapSize, FLAG_IS_CMDLINE(ProfiledCodeHeapSize), true};
+  CodeHeapInfo non_profiled = {NonProfiledCodeHeapSize, FLAG_IS_CMDLINE(NonProfiledCodeHeapSize), true};
 
   const bool cache_size_set   = FLAG_IS_CMDLINE(ReservedCodeCacheSize);
   const size_t ps             = page_size(false, 8);
@@ -229,7 +244,7 @@ void CodeCache::initialize_heaps() {
     // For compatibility reason, disabled tiered compilation overrides
     // segment size ever if it was set explicitly.
     non_profiled.size += profiled.size;
-    // Profiled segment is not available, forcibly set size to 0
+    // Profiled code heap is not available, forcibly set size to 0
     profiled.size = 0;
     profiled.set = true;
     profiled.enabled = false;
@@ -238,7 +253,7 @@ void CodeCache::initialize_heaps() {
   if (!heap_available(CodeBlobType::MethodNonProfiled)) {
     // Compatibility
     non_nmethod.size += profiled.size;
-    // Non-Profiled segment is not available, forcibly set size to 0
+    // Non-Profiled code heap is not available, forcibly set size to 0
     non_profiled.size = 0;
     non_profiled.set = true;
     non_profiled.enabled = false;
@@ -287,23 +302,10 @@ void CodeCache::initialize_heaps() {
 
   // Validation
   // Check minimal required sizes
-  if (non_nmethod.size < non_nmethod_min_size) {
-    report_cache_minimal_size_error("non-nmethod code heap", non_nmethod.size, non_nmethod_min_size);
-    return;
-  }
-
-  if (profiled.enabled && profiled.size < min_size) {
-    report_cache_minimal_size_error("profiled code heap", profiled.size, min_size);
-    return;
-  }
-
-  if (non_profiled.enabled && non_profiled.size < min_size) {
-    report_cache_minimal_size_error("non-profiled code heap", profiled.size, min_size);
-    return;
-  }
-
-  if (cache_size_set && cache_size < min_cache_size) {
-    report_cache_minimal_size_error("reserved code cache", cache_size, min_cache_size);
+  if (!check_min_size("non-nmethod code heap", non_nmethod.size, non_nmethod_min_size) ||
+     (profiled.enabled && !check_min_size("profiled code heap", profiled.size, min_size)) ||
+     (non_profiled.enabled && !check_min_size("non-profiled code heap", non_profiled.size, min_size)) ||
+     (cache_size_set && !check_min_size("reserved code cache", cache_size, min_cache_size))) {
     return;
   }
 

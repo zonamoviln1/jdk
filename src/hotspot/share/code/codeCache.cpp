@@ -182,8 +182,8 @@ static bool check_min_size(const char *codeheap, size_t size, size_t required_si
   if (size >= required_size) {
     return true;
   } else {
-    log_debug(codecache)("CodeCache minimum size fail for %s %lld vs %lld",
-                         codeheap, (long long) size, (long long) required_size);
+    log_debug(codecache)("Code heap (%s) size " SIZE_FORMAT " below required minimal size " SIZE_FORMAT,
+                         codeheap, size, required_size);
     err_msg title("Not enough space in %s to run VM", codeheap);
     err_msg message(SIZE_FORMAT "K < " SIZE_FORMAT "K", size/K, required_size/K);
     vm_exit_during_initialization(title, message);
@@ -241,8 +241,8 @@ void CodeCache::initialize_heaps() {
 
   // Prerequisites
   if (!heap_available(CodeBlobType::MethodProfiled)) {
-    // For compatibility reason, disabled tiered compilation overrides
-    // segment size ever if it was set explicitly.
+    // For compatibility reasons, disabled tiered compilation overrides
+    // segment size even if it is set explicitly.
     non_profiled.size += profiled.size;
     // Profiled code heap is not available, forcibly set size to 0
     profiled.size = 0;

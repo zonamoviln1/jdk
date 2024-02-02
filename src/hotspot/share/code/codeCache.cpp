@@ -223,8 +223,9 @@ static void report_cache_size_error(const CodeHeapInfo& non_nmethod, const CodeH
   vm_exit_during_initialization("Invalid code heap sizes", message);
 }
 
-static size_t subtract_size(size_t cache_size, size_t known_segments_size, size_t min_size) {
-  return (cache_size > known_segments_size + min_size) ? (cache_size - known_segments_size) : min_size;
+static void set_size_of_unset_code_heap(CodeHeapInfo* heap, size_t available_size, size_t known_segments_size, size_t min_size) {
+  assert(!heap->set, "sanity");
+  heap->size = (available_size > known_segments_size + min_size) ? (available_size - known_segments_size) : min_size;
 }
 
 void CodeCache::initialize_heaps() {
@@ -251,12 +252,8 @@ void CodeCache::initialize_heaps() {
   }
 
   if (!heap_available(CodeBlobType::MethodNonProfiled)) {
-    // Compatibility
-    non_nmethod.size += profiled.size;
-    // Non-Profiled code heap is not available, forcibly set size to 0
-    non_profiled.size = 0;
-    non_profiled.set = true;
-    non_profiled.enabled = false;
+    // MethodNonProfiled heap is always available for segmented code heap
+    ShouldNotReachHere();
   }
 
   size_t compiler_buffer_size = 0;
@@ -273,18 +270,18 @@ void CodeCache::initialize_heaps() {
   }
 
   if (profiled.set && !non_profiled.set) {
-    non_profiled.size = subtract_size(cache_size, non_nmethod.size + profiled.size, min_size);
+    set_size_of_unset_code_heap(&non_profiled, cache_size, non_nmethod.size + profiled.size, min_size);
   }
 
   if (!profiled.set && non_profiled.set) {
-    profiled.size = subtract_size(cache_size, non_nmethod.size + non_profiled.size, min_size);
+    set_size_of_unset_code_heap(&profiled, cache_size, non_nmethod.size + non_profiled.size, min_size);
   }
 
   // Compatibility.
   // Override Non-NMethod default size if two other segments are set explicitly
   size_t non_nmethod_min_size = min_cache_size + compiler_buffer_size;
   if (!non_nmethod.set && profiled.set && non_profiled.set) {
-    non_nmethod.size = subtract_size(cache_size, profiled.size + non_profiled.size, non_nmethod_min_size);
+    set_size_of_unset_code_heap(&non_nmethod, cache_size, profiled.size + non_profiled.size, non_nmethod_min_size);
   }
 
   size_t total = non_nmethod.size + profiled.size + non_profiled.size;

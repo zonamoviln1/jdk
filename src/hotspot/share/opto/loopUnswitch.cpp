@@ -136,6 +136,8 @@ void PhaseIdealLoop::do_unswitching(IdealLoopTree* loop, Node_List& old_new) {
   }
 #endif
 
+  C->print_method(PHASE_BEFORE_LOOP_UNSWITCHING, 4, head);
+
   // Need to revert back to normal loop
   if (head->is_CountedLoop() && !head->as_CountedLoop()->is_normal_loop()) {
     head->as_CountedLoop()->set_normal_loop();
@@ -178,12 +180,12 @@ void PhaseIdealLoop::do_unswitching(IdealLoopTree* loop, Node_List& old_new) {
 
   // Hardwire the control paths in the loops into if(true) and if(false)
   _igvn.rehash_node_delayed(unswitching_candidate);
-  dominated_by(loop_selector_fast_loop_proj->as_IfProj(), unswitching_candidate, false, false);
+  dominated_by(loop_selector_fast_loop_proj->as_IfProj(), unswitching_candidate);
 
   IfNode* unswitching_candidate_clone = old_new[unswitching_candidate->_idx]->as_If();
   _igvn.rehash_node_delayed(unswitching_candidate_clone);
   IfFalseNode* loop_selector_slow_loop_proj = loop_selector->proj_out(0)->as_IfFalse();
-  dominated_by(loop_selector_slow_loop_proj, unswitching_candidate_clone, false, false);
+  dominated_by(loop_selector_slow_loop_proj, unswitching_candidate_clone);
 
   // Reoptimize loops
   loop->record_for_igvn();
@@ -200,6 +202,8 @@ void PhaseIdealLoop::do_unswitching(IdealLoopTree* loop, Node_List& old_new) {
                   old_new[head->_idx]->_idx, unswitching_candidate_clone->_idx);
   }
 #endif
+
+  C->print_method(PHASE_AFTER_LOOP_UNSWITCHING, 4, head_clone);
 
   C->set_major_progress();
 }

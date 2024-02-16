@@ -197,32 +197,6 @@ struct CodeHeapInfo {
   bool enabled;
 };
 
-static void report_cache_size_error(const CodeHeapInfo& non_nmethod, const CodeHeapInfo& profiled,
-                                    const CodeHeapInfo& non_profiled, size_t cache_size) {
-  size_t total = non_nmethod.size;
-
-  err_msg message("NonNMethodCodeHeapSize (" SIZE_FORMAT "K)", non_nmethod.size/K);
-  if (profiled.enabled) {
-    total += profiled.size;
-    message.append(" + ProfiledCodeHeapSize (" SIZE_FORMAT "K)", profiled.size/K);
-  }
-
-  if (non_profiled.enabled) {
-    total += non_profiled.size;
-    message.append(" + NonProfiledCodeHeapSize (" SIZE_FORMAT "K)", non_profiled.size/K);
-  }
-  message.append(" = " SIZE_FORMAT "K", total/K);
-
-  if (total > cache_size) {
-    message.append(" is greater than ReservedCodeCacheSize (" SIZE_FORMAT "K).", cache_size/K);
-  }
-  else {
-    message.append(" is not equal to ReservedCodeCacheSize (" SIZE_FORMAT "K).", cache_size/K);
-  }
-
-  vm_exit_during_initialization("Invalid code heap sizes", message);
-}
-
 static void set_size_of_unset_code_heap(CodeHeapInfo* heap, size_t available_size, size_t known_segments_size, size_t min_size) {
   assert(!heap->set, "sanity");
   heap->size = (available_size > known_segments_size + min_size) ? (available_size - known_segments_size) : min_size;
@@ -306,9 +280,20 @@ void CodeCache::initialize_heaps() {
     return;
   }
 
-  // ReservedCodeCacheSize was set explicitly, so report error and abort if it doesn't match segment sizes.
+  // ReservedCodeCacheSize was set explicitly, so report an error and abort if it doesn't match the segment sizes
   if (total != cache_size && cache_size_set) {
-    report_cache_size_error(non_nmethod, profiled, non_profiled, cache_size);
+    err_msg message("NonNMethodCodeHeapSize (" SIZE_FORMAT "K)", non_nmethod.size/K);
+    if (profiled.enabled) {
+      message.append(" + ProfiledCodeHeapSize (" SIZE_FORMAT "K)", profiled.size/K);
+    }
+    if (non_profiled.enabled) {
+      message.append(" + NonProfiledCodeHeapSize (" SIZE_FORMAT "K)", non_profiled.size/K);
+    }
+    message.append(" = " SIZE_FORMAT "K", total/K);
+    message.append((total > cache_size) ? " is greater than " : " is less than ");
+    message.append("ReservedCodeCacheSize (" SIZE_FORMAT "K).", cache_size/K);
+
+    vm_exit_during_initialization("Invalid code heap sizes", message);
     return;
   }
 

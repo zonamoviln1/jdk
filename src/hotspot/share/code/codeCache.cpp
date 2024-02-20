@@ -178,16 +178,13 @@ GrowableArray<CodeHeap*>* CodeCache::_compiled_heaps = new(mtCode) GrowableArray
 GrowableArray<CodeHeap*>* CodeCache::_nmethod_heaps = new(mtCode) GrowableArray<CodeHeap*> (static_cast<int>(CodeBlobType::All), mtCode);
 GrowableArray<CodeHeap*>* CodeCache::_allocable_heaps = new(mtCode) GrowableArray<CodeHeap*> (static_cast<int>(CodeBlobType::All), mtCode);
 
-static bool check_min_size(const char *codeheap, size_t size, size_t required_size) {
-  if (size >= required_size) {
-    return true;
-  } else {
+static void check_min_size(const char *codeheap, size_t size, size_t required_size) {
+  if (size < required_size) {
     log_debug(codecache)("Code heap (%s) size " SIZE_FORMAT " below required minimal size " SIZE_FORMAT,
                          codeheap, size, required_size);
     err_msg title("Not enough space in %s to run VM", codeheap);
     err_msg message(SIZE_FORMAT "K < " SIZE_FORMAT "K", size/K, required_size/K);
     vm_exit_during_initialization(title, message);
-    return false;
   }
 }
 
@@ -226,8 +223,7 @@ void CodeCache::initialize_heaps() {
   }
 
   if (!heap_available(CodeBlobType::MethodNonProfiled)) {
-    // MethodNonProfiled heap is always available for segmented code heap
-    ShouldNotReachHere();
+    assert(false, "MethodNonProfiled heap is always available for segmented code heap");
   }
 
   size_t compiler_buffer_size = 0;
@@ -252,7 +248,6 @@ void CodeCache::initialize_heaps() {
   }
 
   // Compatibility.
-  // Override Non-NMethod default size if two other segments are set explicitly
   size_t non_nmethod_min_size = min_cache_size + compiler_buffer_size;
   if (!non_nmethod.set && profiled.set && non_profiled.set) {
     set_size_of_unset_code_heap(&non_nmethod, cache_size, profiled.size + non_profiled.size, non_nmethod_min_size);
@@ -273,11 +268,15 @@ void CodeCache::initialize_heaps() {
 
   // Validation
   // Check minimal required sizes
-  if (!check_min_size("non-nmethod code heap", non_nmethod.size, non_nmethod_min_size) ||
-     (profiled.enabled && !check_min_size("profiled code heap", profiled.size, min_size)) ||
-     (non_profiled.enabled && !check_min_size("non-profiled code heap", non_profiled.size, min_size)) ||
-     (cache_size_set && !check_min_size("reserved code cache", cache_size, min_cache_size))) {
-    return;
+  check_min_size("non-nmethod code heap", non_nmethod.size, non_nmethod_min_size);
+  if (profiled.enabled) {
+    check_min_size("profiled code heap", profiled.size, min_size);
+  }
+  if (non_profiled.enabled) {
+    check_min_size("non-profiled code heap", non_profiled.size, min_size);
+  }
+  if (cache_size_set) {
+    check_min_size("reserved code cache", cache_size, min_cache_size);
   }
 
   // ReservedCodeCacheSize was set explicitly, so report an error and abort if it doesn't match the segment sizes
@@ -294,7 +293,6 @@ void CodeCache::initialize_heaps() {
     message.append("ReservedCodeCacheSize (" SIZE_FORMAT "K).", cache_size/K);
 
     vm_exit_during_initialization("Invalid code heap sizes", message);
-    return;
   }
 
   // Compatibility. Print warning if using large pages but not able to use the size given

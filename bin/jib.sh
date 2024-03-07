@@ -195,3 +195,5 @@ export REAL_CONFIGURE_COMMAND_EXEC_FULL="$BASH $myfulldir/$myname"
 export REAL_CONFIGURE_COMMAND_EXEC_SHORT="$myname"
 
 ${installed_jib_script} "$@"
+
+
